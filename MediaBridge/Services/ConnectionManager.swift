@@ -60,6 +60,21 @@ class ConnectionManager: ObservableObject, TCPConnectionDelegate {
 
     private init() {
         setupBindings()
+        setupPINExpirationHandler()
+    }
+
+    private func setupPINExpirationHandler() {
+        pinService.setOnPINExpired { [weak self] in
+            guard let self = self,
+                  self.state == .awaitingPIN || self.state == .verifying else { return }
+
+            DispatchQueue.main.async {
+                self.tcpServer.sendNotification(message: "PIN expired. Sending new PIN...")
+            }
+
+            let newPIN = self.pinService.regeneratePIN()
+            self.tcpServer.sendPinChallenge(pin: newPIN)
+        }
     }
 
     private func setupBindings() {

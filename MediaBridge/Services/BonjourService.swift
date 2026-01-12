@@ -173,7 +173,11 @@ class BonjourService: ObservableObject {
             case .ipv4(let address):
                 ipAddress = address.debugDescription
             case .ipv6(let address):
-                ipAddress = address.debugDescription
+                var ip = address.debugDescription
+                if let percentIndex = ip.firstIndex(of: "%") {
+                    ip.removeSubrange(percentIndex...)
+                }
+                ipAddress = ip
             case .name(let hostname, _):
                 ipAddress = hostname
             @unknown default:

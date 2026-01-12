@@ -17,10 +17,13 @@ struct PINVerificationView: View {
                     .foregroundColor(.secondary)
             }
 
-            Text("Enter this PIN on your computer to approve connection.")
+            Text("Enter this PIN on MediaBridge to approve the connection.")
                 .font(.body)
+                .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
-                .padding(.horizontal)
+                .lineLimit(nil)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, 40)
 
             // PIN Display
             ZStack {

@@ -10,6 +10,7 @@ class PINService: ObservableObject {
 
     private var expirationTimer: Timer?
     private var countdownTimer: Timer?
+    private var onPINExpired: (() -> Void)?
 
     // Configuration
     let pinTimeout: TimeInterval = 30  // 30 seconds
@@ -99,6 +100,18 @@ class PINService: ObservableObject {
         print("[PIN] PIN session cancelled")
     }
 
+    func regeneratePIN() -> String {
+        let pin = String(format: "%04d", Int.random(in: 0...9999))
+        currentPIN = pin
+        timeRemaining = Int(pinTimeout)
+        failedAttempts = 0
+
+        startCountdown()
+
+        print("[PIN] Regenerated new PIN: \(pin)")
+        return pin
+    }
+
     private func expirePIN() {
         cancelPIN()
         print("[PIN] PIN expired")
@@ -107,6 +120,18 @@ class PINService: ObservableObject {
     var isPINActive: Bool {
         currentPIN != nil && timeRemaining > 0
     }
+
+    func setOnPINExpired(_ callback: @escaping () -> Void) {
+        onPINExpired = callback
+    }
+
+    private func expirePIN() {
+        cancelPIN()
+        print("[PIN] PIN expired")
+
+        onPINExpired?()
+    }
+}
 }
 
 // MARK: - Verification Result
