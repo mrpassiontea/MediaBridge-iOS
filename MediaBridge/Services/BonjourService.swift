@@ -1,6 +1,7 @@
 import Foundation
 import Network
 import Combine
+import UIKit
 
 class BonjourService: ObservableObject {
     static let shared = BonjourService()
@@ -17,69 +18,41 @@ class BonjourService: ObservableObject {
 
     // MARK: - Publishing (Advertise this iPhone)
 
-    func startPublishing() {
-        guard !isPublishing else { return }
+    /// Configure Bonjour advertisement on an existing listener (from TCPServerService)
+    func configureAdvertisement(on listener: NWListener) {
+        listener.service = NWListener.Service(
+            name: deviceName(),
+            type: ProtocolConstants.serviceType,
+            domain: ProtocolConstants.serviceDomain
+        )
 
-        do {
-            let parameters = NWParameters.tcp
-            parameters.allowLocalEndpointReuse = true
-
-            listener = try NWListener(using: parameters, on: NWEndpoint.Port(rawValue: ProtocolConstants.port)!)
-
-            // Advertise the service via Bonjour
-            listener?.service = NWListener.Service(
-                name: deviceName(),
-                type: ProtocolConstants.serviceType,
-                domain: ProtocolConstants.serviceDomain
-            )
-
-            listener?.serviceRegistrationUpdateHandler = { [weak self] change in
-                DispatchQueue.main.async {
-                    switch change {
-                    case .add(let endpoint):
-                        print("[Bonjour] Service registered: \(endpoint)")
-                        self?.isPublishing = true
-                    case .remove(let endpoint):
-                        print("[Bonjour] Service unregistered: \(endpoint)")
-                        self?.isPublishing = false
-                    @unknown default:
-                        break
-                    }
+        listener.serviceRegistrationUpdateHandler = { [weak self] change in
+            DispatchQueue.main.async {
+                switch change {
+                case .add(let endpoint):
+                    print("[Bonjour] Service registered: \(endpoint)")
+                    self?.isPublishing = true
+                case .remove(let endpoint):
+                    print("[Bonjour] Service unregistered: \(endpoint)")
+                    self?.isPublishing = false
+                @unknown default:
+                    break
                 }
             }
-
-            listener?.stateUpdateHandler = { [weak self] state in
-                DispatchQueue.main.async {
-                    switch state {
-                    case .ready:
-                        print("[Bonjour] Listener ready, publishing service")
-                    case .failed(let error):
-                        print("[Bonjour] Listener failed: \(error)")
-                        self?.isPublishing = false
-                    case .cancelled:
-                        print("[Bonjour] Listener cancelled")
-                        self?.isPublishing = false
-                    default:
-                        break
-                    }
-                }
-            }
-
-            // We don't handle connections here - TCPServerService does that
-            listener?.newConnectionHandler = { connection in
-                connection.cancel()  // Let TCPServerService handle connections
-            }
-
-            listener?.start(queue: queue)
-
-        } catch {
-            print("[Bonjour] Failed to start publishing: \(error)")
         }
+
+        print("[Bonjour] Configured advertisement on existing listener")
+    }
+
+    func startPublishing() {
+        // Publishing is now handled by configuring the TCPServerService listener
+        // This method is kept for backward compatibility but does nothing on its own
+        // Call configureAdvertisement(on:) with the TCP server's listener instead
+        print("[Bonjour] startPublishing called - use configureAdvertisement(on:) instead")
     }
 
     func stopPublishing() {
-        listener?.cancel()
-        listener = nil
+        // The listener is owned by TCPServerService, so we just update our state
         DispatchQueue.main.async {
             self.isPublishing = false
         }

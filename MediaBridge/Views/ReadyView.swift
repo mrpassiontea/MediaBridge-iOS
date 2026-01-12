@@ -25,14 +25,28 @@ struct ReadyView: View {
                     Text("Connected to \(deviceName)")
                         .font(.subheadline)
                         .foregroundColor(.secondary)
+                        .lineLimit(nil)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
 
-                Text("Select photos on your computer to start download.")
+                Text("Select photos on your computer to start the transfer.")
                     .font(.body)
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
-                    .padding(.horizontal)
+                    .lineLimit(nil)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 40)
             }
+
+            // Keep app open notice
+            HStack(spacing: 8) {
+                Image(systemName: "info.circle.fill")
+                    .foregroundColor(.blue)
+                Text("Keep this app open while transferring.")
+                    .font(.footnote)
+                    .foregroundColor(.secondary)
+            }
+            .padding(.horizontal, 40)
 
             // Asset Stats
             HStack(spacing: 30) {

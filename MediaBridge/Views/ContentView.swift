@@ -7,25 +7,7 @@ struct ContentView: View {
     var body: some View {
         ZStack {
             Color(UIColor.systemBackground).ignoresSafeArea()
-
-            Group {
-                switch viewModel.state {
-                case .searching:
-                    if viewModel.devices.isEmpty {
-                        SearchingView()
-                    } else {
-                        PCListView()
-                    }
-                case .pcList:
-                    PCListView()
-                case .verifying:
-                    PINVerificationView()
-                case .connected:
-                    ConnectedView()
-                case .ready:
-                    ReadyView()
-                }
-            }
+            contentView
         }
         .animation(.easeInOut, value: viewModel.state)
         .onAppear {
@@ -34,7 +16,7 @@ struct ContentView: View {
         .onDisappear {
             viewModel.stopServices()
         }
-        .onChange(of: viewModel.errorMessage) { _, newValue in
+        .onChange(of: viewModel.errorMessage) { newValue in
             showingError = newValue != nil
         }
         .alert("Connection Error", isPresented: $showingError) {
@@ -46,6 +28,26 @@ struct ContentView: View {
             }
         } message: {
             Text(viewModel.errorMessage ?? "An unknown error occurred")
+        }
+    }
+
+    @ViewBuilder
+    private var contentView: some View {
+        switch viewModel.state {
+        case .searching:
+            if viewModel.devices.isEmpty {
+                SearchingView()
+            } else {
+                PCListView()
+            }
+        case .pcList:
+            PCListView()
+        case .verifying:
+            PINVerificationView()
+        case .connected:
+            ConnectedView()
+        case .ready:
+            ReadyView()
         }
     }
 }
