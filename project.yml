@@ -1,0 +1,25 @@
+name: MediaBridge
+options:
+  bundleIdPrefix: com.dennispilat
+  deploymentTarget:
+    iOS: 15.0
+targets:
+  MediaBridge:
+    type: application
+    platform: iOS
+    sources: [MediaBridge]
+    info:
+      path: MediaBridge/Resources/Info.plist
+      properties:
+        UILaunchScreen: {}
+        NSPhotoLibraryUsageDescription: "MediaBridge needs access to your photos to transfer them to your computer."
+        NSLocalNetworkUsageDescription: "MediaBridge needs to access your local network to connect to the PC application."
+        NSBonjourServices: 
+          - "_mediabridge._tcp"
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.dennispilat.MediaBridge
+        MARKETING_VERSION: 1.0.0
+        CURRENT_PROJECT_VERSION: 1
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        SWIFT_VERSION: 5.0
