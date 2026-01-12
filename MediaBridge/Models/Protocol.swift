@@ -1,5 +1,13 @@
 import Foundation
 
+// MARK: - TCP Connection Delegate
+
+protocol TCPConnectionDelegate: AnyObject {
+    func connectionDidReceiveCommand(_ command: ProtocolCommand, info: String, payload: Data?)
+    func connectionDidClose()
+    func connectionDidFail(error: Error)
+}
+
 // MARK: - Protocol Constants
 
 enum ProtocolConstants {

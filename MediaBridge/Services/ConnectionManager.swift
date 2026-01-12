@@ -145,7 +145,13 @@ class ConnectionManager: ObservableObject, TCPConnectionDelegate {
 
     /// User taps on a discovered PC to connect
     func connectToPC(_ device: PCDevice) {
-        guard state == .searching || state == .error("") != state else { return }
+        guard case .searching = state else {
+            if case .error = state {
+                // Allow connection retry from error state
+            } else {
+                return
+            }
+        }
 
         connectingDevice = device
         state = .connecting

@@ -42,12 +42,20 @@ struct ContentView: View {
             }
         case .pcList:
             PCListView()
+        case .connecting:
+            PINVerificationView()
         case .verifying:
             PINVerificationView()
         case .connected:
             ConnectedView()
         case .ready:
             ReadyView()
+        case .error:
+            if viewModel.devices.isEmpty {
+                SearchingView()
+            } else {
+                PCListView()
+            }
         }
     }
 }
