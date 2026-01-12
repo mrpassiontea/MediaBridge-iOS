@@ -117,6 +117,8 @@ class PINService: ObservableObject {
     private func expirePIN() {
         cancelPIN()
         print("[PIN] PIN expired")
+
+        onPINExpired?()
     }
 
     var isPINActive: Bool {
@@ -126,14 +128,6 @@ class PINService: ObservableObject {
     func setOnPINExpired(_ callback: @escaping () -> Void) {
         onPINExpired = callback
     }
-
-    private func expirePIN() {
-        cancelPIN()
-        print("[PIN] PIN expired")
-
-        onPINExpired?()
-    }
-}
 }
 
 // MARK: - Verification Result
