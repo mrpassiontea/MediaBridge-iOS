@@ -2,42 +2,70 @@ import SwiftUI
 
 struct PINVerificationView: View {
     @EnvironmentObject var viewModel: MainViewModel
-    @State private var timeRemaining = 30
-    let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
-    
+
     var body: some View {
         VStack(spacing: 30) {
             Spacer()
-            
+
             Text("Connection Request")
                 .font(.title2)
                 .bold()
-            
+
+            if let deviceName = viewModel.connectedDevice?.name {
+                Text("Connecting to \(deviceName)")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+            }
+
             Text("Enter this PIN on your computer to approve connection.")
                 .font(.body)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal)
-            
+
+            // PIN Display
             ZStack {
                 RoundedRectangle(cornerRadius: 12)
                     .fill(Color(UIColor.secondarySystemBackground))
                     .frame(height: 80)
-                
-                Text(viewModel.pinCode ?? "----")
-                    .font(.system(size: 40, weight: .bold, design: .monospaced))
-                    .foregroundColor(.primary)
+
+                HStack(spacing: 12) {
+                    ForEach(Array(pinDigits), id: \.offset) { _, digit in
+                        Text(String(digit))
+                            .font(.system(size: 40, weight: .bold, design: .monospaced))
+                            .foregroundColor(.primary)
+                            .frame(width: 44)
+                    }
+                }
             }
             .padding(.horizontal, 40)
-            
-            HStack {
-                Text("Expires in \(timeRemaining)s")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+            .accessibilityLabel("PIN code: \(accessiblePIN)")
+
+            // Countdown Timer
+            ZStack {
+                Circle()
+                    .stroke(Color(UIColor.systemGray4), lineWidth: 4)
+                    .frame(width: 60, height: 60)
+
+                Circle()
+                    .trim(from: 0, to: timeProgress)
+                    .stroke(timerColor, style: StrokeStyle(lineWidth: 4, lineCap: .round))
+                    .frame(width: 60, height: 60)
+                    .rotationEffect(.degrees(-90))
+                    .animation(.linear(duration: 1), value: viewModel.pinTimeRemaining)
+
+                Text("\(viewModel.pinTimeRemaining)")
+                    .font(.system(size: 20, weight: .semibold, design: .rounded))
+                    .foregroundColor(timerColor)
             }
-            
+
+            Text("Waiting for PIN entry...")
+                .font(.caption)
+                .foregroundColor(.secondary)
+
             Spacer()
-            
+
             Button(action: {
+                triggerHaptic()
                 viewModel.cancelConnection()
             }) {
                 Text("Cancel Request")
@@ -46,13 +74,42 @@ struct PINVerificationView: View {
             }
             .padding(.bottom)
         }
-        .onReceive(timer) { _ in
-            if timeRemaining > 0 {
-                timeRemaining -= 1
-            } else {
-                // In real app, timeout logic would be handled by service
-                // viewModel.cancelConnection()
-            }
-        }
     }
+
+    // MARK: - Computed Properties
+
+    private var pinDigits: [(offset: Int, element: Character)] {
+        let pin = viewModel.pinCode ?? "----"
+        return Array(pin.enumerated())
+    }
+
+    private var accessiblePIN: String {
+        let pin = viewModel.pinCode ?? "----"
+        return pin.map { String($0) }.joined(separator: ", ")
+    }
+
+    private var timeProgress: Double {
+        Double(viewModel.pinTimeRemaining) / 30.0
+    }
+
+    private var timerColor: Color {
+        if viewModel.pinTimeRemaining <= 5 {
+            return .red
+        } else if viewModel.pinTimeRemaining <= 10 {
+            return .orange
+        }
+        return .blue
+    }
+
+    // MARK: - Haptics
+
+    private func triggerHaptic() {
+        let generator = UIImpactFeedbackGenerator(style: .light)
+        generator.impactOccurred()
+    }
+}
+
+#Preview {
+    PINVerificationView()
+        .environmentObject(MainViewModel())
 }
