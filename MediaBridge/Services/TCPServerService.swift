@@ -209,7 +209,8 @@ class TCPServerService: ObservableObject {
 
     weak var delegate: TCPConnectionDelegate?
 
-    private var listener: NWListener?
+    private var _listener: NWListener?
+    var listener: NWListener? { _listener }
     let queue = DispatchQueue(label: "com.mediabridge.server")
 
     private init() {}
@@ -223,6 +224,7 @@ class TCPServerService: ObservableObject {
         parameters.allowLocalEndpointReuse = true
 
         listener = try NWListener(using: parameters, on: NWEndpoint.Port(rawValue: ProtocolConstants.port)!)
+        _listener = listener
 
         listener?.stateUpdateHandler = { [weak self] state in
             DispatchQueue.main.async {
@@ -241,7 +243,7 @@ class TCPServerService: ObservableObject {
         currentConnection?.stop()
         currentConnection = nil
         listener?.cancel()
-        listener = nil
+        _listener = nil
 
         DispatchQueue.main.async {
             self.isRunning = false
