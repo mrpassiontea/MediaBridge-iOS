@@ -106,6 +106,9 @@ class ConnectionManager: ObservableObject, TCPConnectionDelegate {
             return
         }
 
+        // Configure Bonjour advertisement on the TCP listener
+        bonjourService.configureAdvertisement(on: tcpServer.listener)
+
         // Start Bonjour discovery
         bonjourService.startAll()
 

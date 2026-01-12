@@ -118,46 +118,13 @@ class MainViewModel: ObservableObject {
 
         connectedDevice = device
         state = .verifying
-
+        
         // Generate PIN for this connection
         let pin = PINService.shared.generatePIN()
         pinCode = pin
 
         // In the real flow, the PC connects to us and we send the PIN challenge
-        // For testing, simulate the flow
-        #if DEBUG
-        simulateConnectionFlow(device: device)
-        #endif
     }
-
-    #if DEBUG
-    private func simulateConnectionFlow(device: PCDevice) {
-        // Simulate PIN acceptance for testing
-        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
-            guard self?.state == .verifying else { return }
-
-            // Simulate successful verification
-            self?.state = .connected
-            self?.syncProgress = 0
-
-            // Simulate sync progress
-            self?.simulateSync()
-        }
-    }
-
-    private func simulateSync() {
-        var progress: Double = 0
-        Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] timer in
-            progress += 0.05
-            self?.syncProgress = min(progress, 1.0)
-
-            if progress >= 1.0 {
-                timer.invalidate()
-                self?.state = .ready
-            }
-        }
-    }
-    #endif
 
     func cancelConnection() {
         connectionManager.disconnect()

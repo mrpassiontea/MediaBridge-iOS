@@ -210,7 +210,7 @@ class TCPServerService: ObservableObject {
     weak var delegate: TCPConnectionDelegate?
 
     private var listener: NWListener?
-    private let queue = DispatchQueue(label: "com.mediabridge.server")
+    let queue = DispatchQueue(label: "com.mediabridge.server")
 
     private init() {}
 
