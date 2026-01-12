@@ -7,6 +7,7 @@ import UIKit
 enum ConnectionState: Equatable {
     case idle
     case searching
+    case connecting
     case awaitingPIN
     case verifying
     case connected
@@ -18,6 +19,7 @@ enum ConnectionState: Equatable {
         switch (lhs, rhs) {
         case (.idle, .idle),
              (.searching, .searching),
+             (.connecting, .connecting),
              (.awaitingPIN, .awaitingPIN),
              (.verifying, .verifying),
              (.connected, .connected),
@@ -34,6 +36,7 @@ enum ConnectionState: Equatable {
 }
 
 // MARK: - Connection Manager
+// iOS is the TCP CLIENT - it connects to Windows PC
 
 class ConnectionManager: ObservableObject, TCPConnectionDelegate {
     static let shared = ConnectionManager()
@@ -49,7 +52,7 @@ class ConnectionManager: ObservableObject, TCPConnectionDelegate {
     @Published private(set) var videoCount: Int = 0
 
     // Services
-    private let tcpServer = TCPServerService.shared
+    private let tcpClient = TCPClientService.shared
     private let bonjourService = BonjourService.shared
     private let pinService = PINService.shared
     private let photoService = PhotoLibraryService.shared
@@ -57,6 +60,7 @@ class ConnectionManager: ObservableObject, TCPConnectionDelegate {
 
     private var cancellables = Set<AnyCancellable>()
     private var syncTask: Task<Void, Never>?
+    private var connectingDevice: PCDevice?
 
     private init() {
         setupBindings()
@@ -69,11 +73,15 @@ class ConnectionManager: ObservableObject, TCPConnectionDelegate {
                   self.state == .awaitingPIN || self.state == .verifying else { return }
 
             DispatchQueue.main.async {
-                self.tcpServer.sendNotification(message: "PIN expired. Sending new PIN...")
+                self.tcpClient.sendNotification(message: "PIN expired. Sending new PIN...")
             }
 
             let newPIN = self.pinService.regeneratePIN()
-            self.tcpServer.sendPinChallenge(pin: newPIN)
+            self.tcpClient.sendPinChallenge(pin: newPIN)
+
+            DispatchQueue.main.async {
+                self.pinCode = newPIN
+            }
         }
     }
 
@@ -110,24 +118,11 @@ class ConnectionManager: ObservableObject, TCPConnectionDelegate {
             videoCount = photoService.assets.filter { $0.type == .video }.count
         }
 
-        // Start TCP server
-        do {
-            tcpServer.delegate = self
-            try tcpServer.start()
-        } catch {
-            await MainActor.run {
-                state = .error("Failed to start server: \(error.localizedDescription)")
-            }
-            return
-        }
+        // Set up TCP client delegate
+        tcpClient.delegate = self
 
-        // Configure Bonjour advertisement on the TCP listener
-        if let listener = tcpServer.listener {
-            bonjourService.configureAdvertisement(on: listener)
-        }
-
-        // Start Bonjour discovery
-        bonjourService.startAll()
+        // Start Bonjour discovery (looking for Windows PCs)
+        bonjourService.start()
 
         await MainActor.run {
             state = .searching
@@ -136,21 +131,37 @@ class ConnectionManager: ObservableObject, TCPConnectionDelegate {
 
     func stop() {
         syncTask?.cancel()
-        tcpServer.stop()
-        bonjourService.stopAll()
+        tcpClient.disconnect()
+        bonjourService.stop()
         pinService.cancelPIN()
 
         state = .idle
         connectedDeviceName = nil
         pinCode = nil
+        connectingDevice = nil
     }
 
-    // MARK: - Connection Flow
+    // MARK: - Connection Flow (iOS initiates)
+
+    /// User taps on a discovered PC to connect
+    func connectToPC(_ device: PCDevice) {
+        guard state == .searching || state == .error("") != state else { return }
+
+        connectingDevice = device
+        state = .connecting
+        connectedDeviceName = device.name
+
+        // Connect via endpoint if available, otherwise by IP
+        if let endpoint = device.endpoint {
+            tcpClient.connect(to: endpoint)
+        } else {
+            tcpClient.connect(to: device)
+        }
+    }
 
     func disconnect() {
-        tcpServer.sendDisconnect()
+        tcpClient.sendDisconnect()
         cleanup()
-
         state = .searching
     }
 
@@ -158,6 +169,7 @@ class ConnectionManager: ObservableObject, TCPConnectionDelegate {
         syncTask?.cancel()
         pinService.cancelPIN()
         connectedDeviceName = nil
+        connectingDevice = nil
         syncProgress = 0
     }
 
@@ -167,9 +179,6 @@ class ConnectionManager: ObservableObject, TCPConnectionDelegate {
         print("[ConnectionManager] Received: \(command.description), info: \(info)")
 
         switch command {
-        case .connect:
-            handleConnect(deviceName: info)
-
         case .verifyPin:
             handleVerifyPIN(pin: info)
 
@@ -193,13 +202,19 @@ class ConnectionManager: ObservableObject, TCPConnectionDelegate {
     func connectionDidClose() {
         print("[ConnectionManager] Connection closed")
         cleanup()
-        state = .searching
+
+        DispatchQueue.main.async {
+            self.state = .searching
+        }
     }
 
     func connectionDidFail(error: Error) {
         print("[ConnectionManager] Connection failed: \(error)")
         cleanup()
-        state = .error(error.localizedDescription)
+
+        DispatchQueue.main.async {
+            self.state = .error(error.localizedDescription)
+        }
 
         // Retry after delay
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
@@ -209,19 +224,31 @@ class ConnectionManager: ObservableObject, TCPConnectionDelegate {
         }
     }
 
-    // MARK: - Command Handlers
+    // MARK: - Connection Established Handler
 
-    private func handleConnect(deviceName: String) {
-        connectedDeviceName = deviceName.isEmpty ? "Unknown PC" : deviceName
-        state = .awaitingPIN
+    /// Called when TCP connection is ready - sends CONNECT and PIN
+    func onConnectionReady() {
+        guard let device = connectingDevice else { return }
 
-        // Generate PIN and send challenge
+        // 1. Send CONNECT with iPhone name
+        tcpClient.sendConnect(deviceName: deviceName())
+
+        // 2. Generate and display PIN
         let pin = pinService.generatePIN()
-        tcpServer.sendPinChallenge(pin: pin)
+
+        DispatchQueue.main.async {
+            self.state = .awaitingPIN
+            self.pinCode = pin
+        }
+
+        // 3. Send PIN_CHALLENGE to Windows
+        tcpClient.sendPinChallenge(pin: pin)
 
         // Trigger haptic
         triggerHaptic(.medium)
     }
+
+    // MARK: - Command Handlers
 
     private func handleVerifyPIN(pin: String) {
         state = .verifying
@@ -230,7 +257,7 @@ class ConnectionManager: ObservableObject, TCPConnectionDelegate {
 
         switch result {
         case .success:
-            tcpServer.sendPinOK()
+            tcpClient.sendPinOK()
             state = .connected
             triggerHaptic(.success)
 
@@ -238,20 +265,20 @@ class ConnectionManager: ObservableObject, TCPConnectionDelegate {
             startSync()
 
         case .failed(let remaining):
-            tcpServer.sendPinFail()
+            tcpClient.sendPinFail()
             state = .awaitingPIN
-            tcpServer.sendNotification(message: "Wrong PIN. \(remaining) attempts remaining.")
+            tcpClient.sendNotification(message: "Wrong PIN. \(remaining) attempts remaining.")
             triggerHaptic(.error)
 
         case .expired:
-            tcpServer.sendPinFail()
-            tcpServer.sendNotification(message: "PIN expired")
+            tcpClient.sendPinFail()
+            tcpClient.sendNotification(message: "PIN expired")
             disconnect()
             triggerHaptic(.error)
 
         case .maxAttemptsReached:
-            tcpServer.sendPinFail()
-            tcpServer.sendNotification(message: "Too many failed attempts")
+            tcpClient.sendPinFail()
+            tcpClient.sendNotification(message: "Too many failed attempts")
             disconnect()
             triggerHaptic(.error)
         }
@@ -263,7 +290,7 @@ class ConnectionManager: ObservableObject, TCPConnectionDelegate {
             return
         }
 
-        tcpServer.sendAssetList(json: json)
+        tcpClient.sendAssetList(json: json)
     }
 
     private func handleGetThumbnail(assetId: String) {
@@ -272,7 +299,7 @@ class ConnectionManager: ObservableObject, TCPConnectionDelegate {
                 print("[ConnectionManager] No thumbnail for asset: \(assetId)")
                 return
             }
-            self?.tcpServer.sendThumbnail(assetId: assetId, data: data)
+            self?.tcpClient.sendThumbnail(assetId: assetId, data: data)
         }
     }
 
@@ -287,13 +314,13 @@ class ConnectionManager: ObservableObject, TCPConnectionDelegate {
         case .photo:
             photoService.getImageData(for: assetId) { [weak self] data in
                 guard let data = data else { return }
-                self?.tcpServer.sendFileData(assetId: assetId, data: data)
+                self?.tcpClient.sendFileData(assetId: assetId, data: data)
             }
 
         case .video:
             photoService.getVideoData(for: assetId) { [weak self] data in
                 guard let data = data else { return }
-                self?.tcpServer.sendFileData(assetId: assetId, data: data)
+                self?.tcpClient.sendFileData(assetId: assetId, data: data)
             }
 
         case .livePhoto:
@@ -301,7 +328,7 @@ class ConnectionManager: ObservableObject, TCPConnectionDelegate {
             // The client can request the video component separately
             photoService.getLivePhotoImageData(for: assetId) { [weak self] data in
                 guard let data = data else { return }
-                self?.tcpServer.sendFileData(assetId: assetId, data: data)
+                self?.tcpClient.sendFileData(assetId: assetId, data: data)
             }
         }
     }
@@ -325,6 +352,16 @@ class ConnectionManager: ObservableObject, TCPConnectionDelegate {
                 self.state = .ready
             }
         }
+    }
+
+    // MARK: - Helpers
+
+    private func deviceName() -> String {
+        #if os(iOS)
+        return UIDevice.current.name
+        #else
+        return Host.current().localizedName ?? "iPhone"
+        #endif
     }
 
     // MARK: - Haptics

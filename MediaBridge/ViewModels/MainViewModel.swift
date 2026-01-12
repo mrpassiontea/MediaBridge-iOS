@@ -36,7 +36,14 @@ class MainViewModel: ObservableObject {
         // Bind discovered devices
         bonjourService.$discoveredDevices
             .receive(on: DispatchQueue.main)
-            .assign(to: &$devices)
+            .sink { [weak self] devices in
+                self?.devices = devices
+                // Update state if we're searching and found devices
+                if self?.state == .searching && !devices.isEmpty {
+                    self?.state = .pcList
+                }
+            }
+            .store(in: &cancellables)
 
         // Bind PIN state
         connectionManager.$pinCode
@@ -51,10 +58,9 @@ class MainViewModel: ObservableObject {
         connectionManager.$connectedDeviceName
             .receive(on: DispatchQueue.main)
             .sink { [weak self] name in
-                if let name = name {
-                    self?.connectedDevice = PCDevice(id: UUID(), name: name, ipAddress: "", port: 0)
-                } else {
-                    self?.connectedDevice = nil
+                if let name = name, let device = self?.connectedDevice {
+                    // Update device name if we have a connected device
+                    self?.connectedDevice = PCDevice(id: device.id, name: name, ipAddress: device.ipAddress, port: device.port, endpoint: device.endpoint)
                 }
             }
             .store(in: &cancellables)
@@ -79,9 +85,16 @@ class MainViewModel: ObservableObject {
 
     private func updateAppState(from connectionState: ConnectionState) {
         switch connectionState {
-        case .idle, .searching:
+        case .idle:
+            state = .searching
+            errorMessage = nil
+
+        case .searching:
             state = devices.isEmpty ? .searching : .pcList
             errorMessage = nil
+
+        case .connecting:
+            state = .connecting
 
         case .awaitingPIN, .verifying:
             state = .verifying
@@ -94,7 +107,7 @@ class MainViewModel: ObservableObject {
 
         case .error(let message):
             errorMessage = message
-            // Stay in current state but show error
+            state = .error
         }
     }
 
@@ -110,20 +123,10 @@ class MainViewModel: ObservableObject {
         connectionManager.stop()
     }
 
+    /// User taps on a PC to connect - iOS initiates the connection
     func connect(to device: PCDevice) {
-        // For now, we wait for the PC to connect to us
-        // The device list shows PCs that are running MediaBridge
-        // When user taps "Connect", we're essentially selecting this device
-        // The actual connection is initiated by the PC
-
         connectedDevice = device
-        state = .verifying
-        
-        // Generate PIN for this connection
-        let pin = PINService.shared.generatePIN()
-        pinCode = pin
-
-        // In the real flow, the PC connects to us and we send the PIN challenge
+        connectionManager.connectToPC(device)
     }
 
     func cancelConnection() {
@@ -142,7 +145,15 @@ class MainViewModel: ObservableObject {
 
     func retryConnection() {
         errorMessage = nil
-        state = .searching
-        startServices()
+        if let device = connectedDevice {
+            // Retry connecting to the same device
+            connectionManager.connectToPC(device)
+        } else {
+            state = devices.isEmpty ? .searching : .pcList
+        }
+    }
+
+    func backToDeviceList() {
+        cancelConnection()
     }
 }
