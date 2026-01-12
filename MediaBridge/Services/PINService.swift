@@ -101,6 +101,8 @@ class PINService: ObservableObject {
     }
 
     func regeneratePIN() -> String {
+        cancelPIN()
+
         let pin = String(format: "%04d", Int.random(in: 0...9999))
         currentPIN = pin
         timeRemaining = Int(pinTimeout)
