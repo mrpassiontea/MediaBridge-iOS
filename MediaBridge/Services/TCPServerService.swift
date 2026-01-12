@@ -223,20 +223,20 @@ class TCPServerService: ObservableObject {
         let parameters = NWParameters.tcp
         parameters.allowLocalEndpointReuse = true
 
-        listener = try NWListener(using: parameters, on: NWEndpoint.Port(rawValue: ProtocolConstants.port)!)
+        let listener = try NWListener(using: parameters, on: NWEndpoint.Port(rawValue: ProtocolConstants.port)!)
         _listener = listener
 
-        listener?.stateUpdateHandler = { [weak self] state in
+        listener.stateUpdateHandler = { [weak self] state in
             DispatchQueue.main.async {
                 self?.handleListenerState(state)
             }
         }
 
-        listener?.newConnectionHandler = { [weak self] connection in
+        listener.newConnectionHandler = { [weak self] connection in
             self?.handleNewConnection(connection)
         }
 
-        listener?.start(queue: queue)
+        listener.start(queue: queue)
     }
 
     func stop() {
