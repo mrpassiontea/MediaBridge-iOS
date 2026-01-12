@@ -196,6 +196,12 @@ class BonjourService: ObservableObject {
         )
 
         DispatchQueue.main.async {
+            // Filter out own device
+            if name == self.deviceName() {
+                print("[Bonjour] Skipped own device: \(name)")
+                return
+            }
+
             // Check if device already exists (by name + IP)
             if !self.discoveredDevices.contains(where: { $0.name == name && $0.ipAddress == ipAddress }) {
                 self.discoveredDevices.append(device)
